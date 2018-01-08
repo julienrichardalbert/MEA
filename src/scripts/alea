@@ -1,0 +1,69 @@
+#!/bin/bash
+# get the full path to itself
+pushd `dirname $0` > /dev/null
+AL_DIR_TOOLS=`pwd -P`
+popd > /dev/null
+source $AL_DIR_TOOLS/alea.config
+
+
+function usage {
+    echo "
+Program: ALEA (Toolbox for allele-specific epigenomics analysis)
+Version: $AL_VERSION
+Contact: Hamid Younesy <hyounesy@bcgsc.ca>
+
+Usage:   alea <command> [options]
+
+Command: phaseVCF       creates phased VCF file from an unphased VCF and
+                        haplotypes (.haps)
+                        
+         createGenome   creates insilico genome (.fasta) from a reference
+                        genome and phased variants (.vcf)
+                        
+         alignReads     aligns reads (.fastq) to the insilico genomes and
+                        filters allelic reads
+                        
+         createTracks   creates bigwig tracks (.bw) from the allelic reads
+"
+}
+
+if test $# -ge 1
+then
+    VAR_COMMAND=$1
+    shift
+    
+    case $VAR_COMMAND in
+        phaseVCF)
+            $AL_DIR_TOOLS/phaseVCF.sh $@
+            ;;
+            
+        createGenome)
+            $AL_DIR_TOOLS/createGenome.sh $@
+            ;;
+
+        alignReads)
+            $AL_DIR_TOOLS/alignReads.sh $@
+            ;;
+
+        createTracks)
+            $AL_DIR_TOOLS/createTracks.sh $@
+            ;;
+
+        -h )
+            usage
+            exit 0
+            ;;
+
+        * )
+            usage
+            exit 1
+            ;;
+    esac
+    
+    VAR_CODE=$?
+    #echo "$VAR_COMMAND returned with exit code: $VAR_CODE" 
+    exit $VAR_CODE
+fi
+
+usage
+exit 1

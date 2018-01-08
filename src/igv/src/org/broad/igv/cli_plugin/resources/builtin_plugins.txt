@@ -1,0 +1,8 @@
+#Table of contents listing the builtin plugins
+#Plan on auto generating this at some point (git annotate to see if this is a lie)
+awk_plugin.xml
+bedtools_plugin.xml
+gen_plugin.xml
+cufflinks_plugin.xml
+gatk_plugin.xml
+snpeff_plugin.xml
