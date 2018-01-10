@@ -1,13 +1,13 @@
 ##########################################################################################
 # Dockerfile
 #
-# Software:         ALEA2
-# Software Version: alea.2.0
-# Description:      A toolbox for Allele-specific Epigenomics Analysis
+# Software:         MEA
+# Software Version: mea.1.0
+# Description:      a Methylomic and Epigenomic Allele-specific analysis pipeline
 # Base Image:       java:7
-# Build Cmd:        docker build -t taskkoike/alea:2.0 /path/to/dockerfile-directory/
-# Note bene:        export ALEA2='docker run -v <path/to/host/alea/data>:/alea-data -i taskkoike/alea:2.0'
-# Run Cmd:          $ALEA2 setting
+# Build Cmd:        docker build -t taskkoike/mea:1.0 /path/to/dockerfile-directory/
+# Note bene:        export MEA='docker run -v <path/to/host/mea/data>:/mea-data -i taskkoike/mea:1.0'
+# Run Cmd:          $MEA setting
 ##########################################################################################
 
 FROM java:7
@@ -241,50 +241,50 @@ RUN wget -q  http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/hubCheck && \
 
 
 ##########################################################################################
-# ALEA2 2.0
+# MEA 1.0
 ##########################################################################################
 
-ENV ALEA_INSTALL_DIR=/opt/alea
-ENV ALEA_VERSION=2.0
-ENV ALEA_FILENAME=alea.${ALEA_VERSION}.tar.gz
-#ENV ALEA_URL=https://github.com/hyounesy/ALEA/raw/Task/dist/${ALEA_FILENAME}
-#https://github.com/hyounesy/ALEA/raw/master/dist/alea.1.2.2.tar.gz
+RUN ls /opt/
+RUN ls /opt/
+ENV MEA_INSTALL_DIR=/opt/mea
+ENV MEA_VERSION=1.0
+ENV MEA_FILENAME=mea.${MEA_VERSION}.tar.gz
 
-ENV ALEA_URL=https://github.com/hyounesy/ALEA/raw/master/dist/${ALEA_FILENAME}
+ENV MEA_URL=https://github.com/julienrichardalbert/MEA/raw/master/dist/${MEA_FILENAME}
 
 
 WORKDIR /tmp
-COPY  ${ALEA_FILENAME} ${ALEA_FILENAME}
-RUN wget -q $ALEA_URL
-RUN  tar -zxvf ${ALEA_FILENAME} -C /opt && \
-  rm -f /tmp/${ALEA_FILENAME}
+RUN ls /opt/
+RUN wget -q $MEA_URL
+RUN tar -zxvf $MEA_FILENAME -C /opt && rm -f /tmp/$MEA_FILENAME
 
+RUN ls /opt/
 
 ##########################################################################################
 # Create links
 ##########################################################################################
 
-RUN ln -s /opt/samtools-0.1.19/samtools $ALEA_INSTALL_DIR/bin/ && \
-  ln -s $SAMTOOLS_INSTALL_DIR/bin/tabix $ALEA_INSTALL_DIR/bin/tabix && \
-  ln -s $SAMTOOLS_INSTALL_DIR/bin/bgzip $ALEA_INSTALL_DIR/bin/bgzip && \
-  ln -s /opt/bwa-0.7.12/bwa $ALEA_INSTALL_DIR/bin/ && \
-  find /opt/bowtie-1.1.2/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  find /opt/bowtie2-2.2.9/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  ln -s /opt/bedGraphToBigWig/bedGraphToBigWig $ALEA_INSTALL_DIR/bin/ && \
-  ln -s /opt/shapeit/bin/shapeit $ALEA_INSTALL_DIR/bin/ && \
-  find $VCFTOOLS_INSTALL_DIR/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  find /opt/bedtools2/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  find /opt/bedops/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  find /opt/bismark_v0.16.3/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  find /opt/tophat-2.1.1.Linux_x86_64/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/ && \
-  ln -s /opt/STAR-2.5.1b/source/STAR $ALEA_INSTALL_DIR/bin/
+RUN ln -s /opt/samtools-0.1.19/samtools $MEA_INSTALL_DIR/bin/ && \
+  ln -s $SAMTOOLS_INSTALL_DIR/bin/tabix $MEA_INSTALL_DIR/bin/tabix && \
+  ln -s $SAMTOOLS_INSTALL_DIR/bin/bgzip $MEA_INSTALL_DIR/bin/bgzip && \
+  ln -s /opt/bwa-0.7.12/bwa $MEA_INSTALL_DIR/bin/ && \
+  find /opt/bowtie-1.1.2/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  find /opt/bowtie2-2.2.9/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  ln -s /opt/bedGraphToBigWig/bedGraphToBigWig $MEA_INSTALL_DIR/bin/ && \
+  ln -s /opt/shapeit/bin/shapeit $MEA_INSTALL_DIR/bin/ && \
+  find $VCFTOOLS_INSTALL_DIR/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  find /opt/bedtools2/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  find /opt/bedops/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  find /opt/bismark_v0.16.3/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  find /opt/tophat-2.1.1.Linux_x86_64/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/ && \
+  ln -s /opt/STAR-2.5.1b/source/STAR $MEA_INSTALL_DIR/bin/
 
-#  find /opt/bedtools22/bedtools2/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $ALEA_INSTALL_DIR/bin/bedtools22 && \
+#  find /opt/bedtools22/bedtools2/bin/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} $MEA_INSTALL_DIR/bin/bedtools22 && \
 
 RUN  find /opt/bowtie2-2.2.9/ -maxdepth 1 -perm -+x -type f | xargs -i ln -s {} /usr/local/bin/ 
 
-RUN ln -s /opt/2bit/twoBitToFa $ALEA_INSTALL_DIR/bin/ && \
-  ln -s /opt/hubCheck/hubCheck $ALEA_INSTALL_DIR/bin/
+RUN ln -s /opt/2bit/twoBitToFa $MEA_INSTALL_DIR/bin/ && \
+  ln -s /opt/hubCheck/hubCheck $MEA_INSTALL_DIR/bin/
 
 ##########################################################################################
 # Clean
@@ -309,15 +309,15 @@ RUN apt-get -y autoremove
 #  zlib1g-dev \
 
 ##########################################################################################
-# COPY alea.config
+# COPY mea.config
 ##########################################################################################
 #
-#COPY alea.config /opt/alea/bin/
+#COPY mea.config /opt/mea/bin/
 #
 #
 ##########################################################################################
 # ENTRYPOINT
 ##########################################################################################
 
-ENTRYPOINT ["/opt/alea/bin/alea"]
+ENTRYPOINT ["/opt/mea/bin/mea"]
 #ENTRYPOINT ["/bin/bash"]
