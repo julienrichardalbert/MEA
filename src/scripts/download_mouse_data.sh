@@ -1,13 +1,13 @@
 pushd `dirname $0` > /dev/null
-AL_DIR=`pwd -P` # get the full path to itself
+MEA_DIR=`pwd -P` # get the full path to itself
 popd > /dev/null
-AL_DIR_TOOLS="$AL_DIR"/bin
+MEA_DIR_TOOLS="$MEA_DIR"/bin
 
-source "$AL_DIR_TOOLS"/alea.config
+source "$MEA_DIR_TOOLS"/mea.config
 
 
-mkdir -p "$AL_DIR"/test-data/mouse
-pushd "$AL_DIR"/test-data/mouse
+mkdir -p "$MEA_DIR"/test-data/mouse
+pushd "$MEA_DIR"/test-data/mouse
 
 wget -c ftp://ftp.bcgsc.ca/supplementary/ALEA/files/test-data/mouse/mgp.v2.indels.chrname.vcf.gz
 wget -c ftp://ftp.bcgsc.ca/supplementary/ALEA/files/test-data/mouse/mgp.v2.indels.chrname.vcf.gz.tbi

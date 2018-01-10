@@ -1,10 +1,13 @@
 #!/bin/bash
 
 pushd `dirname $0` > /dev/null
-AL_DIR_TOOLS=`pwd -P` # get the full path to itself
+MEA_DIR_TOOLS=`pwd -P` # get the full path to itself
 popd > /dev/null
 
-source $AL_DIR_TOOLS/alea.config
+# MANUAL INSTALLATION
+#source $MEA_DIR_TOOLS/mea.config
+# DOCKER INSTALLATION
+source /mea-data/mea.config
 
 ##############################################################################
 #############   Module 1: creating phased genotypes
@@ -15,7 +18,7 @@ if test $# -ne 3
 then
     echo "
 Usage:
-         alea phaseVCF hapsDIR unphased.vcf outputPrefix
+         mea phaseVCF hapsDIR unphased.vcf outputPrefix
 
 Options:
          hapsDIR        path to the directory containing the .haps files
@@ -56,16 +59,16 @@ PARAM_HAPS_DIR=$1
 PARAM_INPUT_VCF=$2
 PARAM_OUT_PREFIX=$3
 
-aleaCheckDirExists $PARAM_HAPS_DIR
-aleaCheckFileExists $PARAM_INPUT_VCF
+meaCheckDirExists $PARAM_HAPS_DIR
+meaCheckFileExists $PARAM_INPUT_VCF
 
 
 ## merge the .haps files and fix the chromosome name field
 mergeHaps "$PARAM_HAPS_DIR" "$PARAM_OUT_PREFIX".haps
 
 ## create phased vcf files
-$AL_BIN_PHASEVCF "$PARAM_OUT_PREFIX".haps "$PARAM_INPUT_VCF" "$PARAM_OUT_PREFIX".vcf
-$AL_BIN_BGZIP "$PARAM_OUT_PREFIX".vcf
-$AL_BIN_TABIX -p vcf "$PARAM_OUT_PREFIX".vcf.gz
+$MEA_BIN_PHASEVCF "$PARAM_OUT_PREFIX".haps "$PARAM_INPUT_VCF" "$PARAM_OUT_PREFIX".vcf
+$MEA_BIN_BGZIP "$PARAM_OUT_PREFIX".vcf
+$MEA_BIN_TABIX -p vcf "$PARAM_OUT_PREFIX".vcf.gz
 
 printProgress "[phaseVCF] Done"

@@ -1,0 +1,61 @@
+### Setting
+
+#--------------------------------------------------------------------
+# analysis type
+#--------------------------------------------------------------------
+
+MEA_ANALYSIS_CHOICE='
+[1] ChIPseq
+[2] RNAseq
+[3] BSseq'
+
+MEA_ANALYSIS_TYPE=2
+
+#--------------------------------------------------------------------
+# aligner type
+#--------------------------------------------------------------------
+
+# In the case of ChIP-seq
+MEA_ALIGNER_CHOICE_CHIP='
+[1] BWA
+[2] Bowtie
+[3] Bowtie2 (recommended)'
+
+MEA_ALIGNER_TYPE_CHIP=1
+
+# In the case of RNA-seq
+MEA_ALIGNER_CHOICE_RNA='
+[1] STAR
+[2] Tophat2'
+
+MEA_ALIGNER_TYPE_RNA=1
+
+# In the case of WGBS
+MEA_ALIGNER_CHOICE_BS='
+[1] Bismark'
+
+MEA_ALIGNER_TYPE_BS=1
+
+#--------------------------------------------------------------------
+# method type : discontinued in MEA
+#--------------------------------------------------------------------
+
+# do not allow separate genome method
+#MEA_METHOD_CHOICE='
+#[1] Concatenated genome method
+#[2] Separate genome method'
+
+MEA_METHOD_TYPE=1
+
+
+#--------------------------------------------------------------------
+# reference genome path variables
+#--------------------------------------------------------------------
+
+# options to set global variables to reference genome and chrom sizes file paths
+MEA_REFERENCE_CHOICE='
+[1] Keep current settings
+[2] Automatically download genome, or change between pre-exsiting builds (recommended)
+[3] Manually set file paths to local files'
+
+MEA_REFERENCE_TYPE=2

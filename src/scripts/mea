@@ -1,0 +1,92 @@
+#!/bin/bash
+# get the full path to itself
+pushd `dirname $0` > /dev/null
+MEA_DIR_TOOLS=`pwd -P`
+popd > /dev/null
+
+# MANUAL INSTALLATION
+#source $MEA_DIR_TOOLS/mea.config
+# DOCKER INSTALLATION
+if [ -f /mea-data/mea.config ]
+then
+    source /mea-data/mea.config
+else
+    source $MEA_DIR_TOOLS/mea.config
+fi
+
+
+function usage {
+    echo "
+Program: MEA (a Methylomic and Epigenomic Allele-specific analysis pipeline)
+Version: $MEA_VERSION
+Contact: Hamid Younesy <hyounesy@bcgsc.ca> Julien Richard Albert <jrichardalbert@gmail.com>
+
+Usage:   mea <command> [options]
+
+Command: setting        configure MEA interactively and modifies confing
+                        (.setting and .config)
+                        
+         phaseVCF       creates phased VCF file from an unphased VCF and
+                        haplotypes (.haps)
+                        
+         createGenome   creates insilico genome (.fasta) from a reference
+                        genome and phased variants (.vcf)
+                        
+         alignReads     aligns reads (.fastq) to the insilico genomes and
+                        filters allelic reads
+                        
+         createTracks   creates bigwig tracks (.bw) from the allelic reads
+         
+         createReport	creates tab-delimited (.bed) from allelic tracks
+         				and user-defined regions of interest
+"
+}
+
+if test $# -ge 1
+then
+    VAR_COMMAND=$1
+    shift
+    
+    case $VAR_COMMAND in
+        setting)
+            $MEA_DIR_TOOLS/setting.sh $@
+            ;;
+
+        phaseVCF)
+            $MEA_DIR_TOOLS/phaseVCF.sh $@
+            ;;
+            
+        createGenome)
+            $MEA_DIR_TOOLS/createGenome.sh $@
+            ;;
+
+        alignReads)
+            $MEA_DIR_TOOLS/alignReads.sh $@
+            ;;
+
+        createTracks)
+            $MEA_DIR_TOOLS/createTracks.sh $@
+            ;;
+            
+        createReport)
+            $MEA_DIR_TOOLS/createReport.sh $@
+            ;;
+            
+        -h )
+            usage
+            exit 0
+            ;;
+
+        * )
+            usage
+            exit 1
+            ;;
+    esac
+    
+    VAR_CODE=$?
+    #echo "$VAR_COMMAND returned with exit code: $VAR_CODE" 
+    exit $VAR_CODE
+fi
+
+usage
+exit 1
