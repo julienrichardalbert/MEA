@@ -244,8 +244,6 @@ RUN wget -q  http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/hubCheck && \
 # MEA 1.0
 ##########################################################################################
 
-RUN ls /opt/
-RUN ls /opt/
 ENV MEA_INSTALL_DIR=/opt/mea
 ENV MEA_VERSION=1.0
 ENV MEA_FILENAME=mea.${MEA_VERSION}.tar.gz
