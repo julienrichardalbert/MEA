@@ -42,7 +42,7 @@ function download_genome {
 	wget http://hgdownload-test.cse.ucsc.edu/goldenPath/"$BUILD"/bigZips/"$BUILD".2bit
 	$MEA_DIR_TOOLS/twoBitToFa "$BUILD".2bit "$BUILD".fa && rm "$BUILD".2bit
 	sed -i 's/>chr/>/g' "$BUILD".fa
-	sed -i 's/>chr/>/g' "$BUILD".chrom.sizes
+	sed -i 's/chr//g' "$BUILD".chrom.sizes
     echo "Download complete. Setting new path variables"
 	INPUT_BUILD="$BUILD"
 	INPUT_REFERENCE_GENOME=""$MEA_DIR_REFERENCES"/"$BUILD".fa"
