@@ -261,6 +261,7 @@ VAR_FASTA_CONCAT="$PARAM_OUTPUT_DIR"/"$PARAM_STRAIN1"_"$PARAM_STRAIN2".fasta
 concatFasta "$VAR_FASTA1" "$VAR_FASTA2" "$PARAM_STRAIN1" "$PARAM_STRAIN2" "$VAR_FASTA_CONCAT"
 
 if [ $MEA_USE_STAR = 1 ]; then
+	#reorder pseudogenome
 	FOLDER="$PARAM_OUTPUT_DIR/reorder_fasta"
 	meaCreateDir "$FOLDER"
 	awk -v FOLDER=$FOLDER 'BEGIN {OFS="\t"} {
@@ -284,6 +285,33 @@ if [ $MEA_USE_STAR = 1 ]; then
 
 	cat `ls $FOLDER/* | sort -V` > "$VAR_FASTA_CONCAT"
 	rm -r $FOLDER
+	
+	
+	#reorder reference genome
+	FOLDER="$PARAM_OUTPUT_DIR/reorder_fasta"
+	meaCreateDir "$FOLDER"
+	awk -v FOLDER=$FOLDER 'BEGIN {OFS="\t"} {
+		do {
+			if ($1 ~ ">" ) {
+				filename = substr($1,2);
+				print $0 > FOLDER"/"filename;
+			} else {
+				print $0 > FOLDER"/"filename;
+			}
+		} while (getline)
+	}' "$MEA_REFERENCE_GENOME" 
+	
+	for FILE2 in $FOLDER/*; do
+		FILE=$(basename $FILE2)
+		name=${FILE##*_}
+		name2=${FILE%_*}
+		mv $FILE2 $FOLDER/"$name"_"$name2"
+	done
+
+	cat `ls $FOLDER/* | sort -V` > "$MEA_REFERENCE_GENOME"
+	rm -r $FOLDER
+	
+	
 fi
 
 $MEA_BIN_SAMTOOLS faidx "$VAR_FASTA_CONCAT"
