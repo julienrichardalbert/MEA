@@ -86,10 +86,12 @@ function createFastaIndex {
         $MEA_BIN_BISMARK_INDEX --bowtie2 --path_to_bowtie $MEA_DIR_TOOLS "$PARAM_OUTPUT_DIR"/"$PARAM_STRAIN"
     elif [ $MEA_USE_STAR = 1 ]; then
         meaCreateDir "$PARAM_OUTPUT_DIR"/STAR-index/"$PARAM_STRAIN"
-		local PATH=$PATH:/opt/mea/bin/STAR
+	local PATH=$PATH:/opt/mea/bin/STAR
         local totalk=$[600 * $(awk '/^MemTotal:/{print $2}' /proc/meminfo)]
  #       $MEA_BIN_STAR --runMode genomeGenerate --runThreadN $MEA_THREADS --genomeDir "$PARAM_OUTPUT_DIR"/STAR-index/"$PARAM_STRAIN" --genomeFastaFiles "$PARAM_FASTA" --genomeSAsparseD 2 --limitGenomeGenerateRAM $totalk --genomeChrBinNbits 14
-		$MEA_BIN_STAR --runMode genomeGenerate --runThreadN $cpus --genomeDir "$PARAM_OUTPUT_DIR"/STAR-index/"$PARAM_STRAIN" --genomeFastaFiles "$PARAM_FASTA" --genomeSAsparseD 2
+ 	#set suffix length max to 1000 to reduce computational needs to ~31GB & 16 threads
+	#$MEA_BIN_STAR --runMode genomeGenerate --runThreadN $cpus --genomeDir "$PARAM_OUTPUT_DIR"/STAR-index/"$PARAM_STRAIN" --genomeFastaFiles "$PARAM_FASTA" --genomeSAsparseD 2 --genomeSuffixLengthMax 1000
+	$MEA_BIN_STAR --runMode genomeGenerate --runThreadN $cpus --genomeDir "$PARAM_OUTPUT_DIR"/STAR-index/"$PARAM_STRAIN" --genomeFastaFiles "$PARAM_FASTA" --genomeSAsparseD 2
         cp /*.out "$PARAM_OUTPUT_DIR"/. 
     elif [ $MEA_USE_TOPHAT2 = 1 ]; then
         meaCreateDir "$PARAM_OUTPUT_DIR"/bowtie2-index
