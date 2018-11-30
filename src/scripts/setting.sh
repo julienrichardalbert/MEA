@@ -37,9 +37,9 @@ function download_genome {
 	local BUILD=$1
 	cd mea-data/reference_genomes
 	echo "Downloading "$BUILD".chrom.sizes from UCSC..."
-	wget http://hgdownload-test.cse.ucsc.edu/goldenPath/"$BUILD"/bigZips/"$BUILD".chrom.sizes
+	wget http://hgdownload.cse.ucsc.edu/goldenPath/"$BUILD"/bigZips/"$BUILD".chrom.sizes
     echo "Downloading "$BUILD".fa from UCSC"
-	wget http://hgdownload-test.cse.ucsc.edu/goldenPath/"$BUILD"/bigZips/"$BUILD".2bit
+	wget http://hgdownload.cse.ucsc.edu/goldenPath/"$BUILD"/bigZips/"$BUILD".2bit
 	$MEA_DIR_TOOLS/twoBitToFa "$BUILD".2bit "$BUILD".fa && rm "$BUILD".2bit
 	sed -i 's/>chr/>/g' "$BUILD".fa
 	sed -i 's/chr//g' "$BUILD".chrom.sizes
