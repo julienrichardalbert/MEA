@@ -17,7 +17,7 @@ Building on our previous work on the ALEA software package, a computational tool
 ## Credits
 Hamid Younesy, Torsten Möller, Alireza Heravi-Moussavi, Jeffrey B. Cheng, Joseph F. Costello, Matthew C. Lorincz, Mohammad M. Karimi and Steven J. M. Jones, "ALEA: a toolbox for allele-specific epigenomics analysis." Bioinformatics 30.8 (2014): 1172-1174. [[link to paper](http://bioinformatics.oxfordjournals.org/content/30/8/1172.long)]
 
-Julien Richard Albert, Tasuku Koike, Hamid Younesy, Richard Thompson, Aaron B. Bogutz, Mohammad M. Karimi and Matthew C. Lorincz, "MEA: a Methylomic and Epigenomic Allele-specific analysis pipeline." Submitted
+Julien Richard Albert, Tasuku Koike, Hamid Younesy, Richard Thompson, Aaron B. Bogutz, Mohammad M. Karimi and Matthew C. Lorincz, "Development and application of an integrated allele-specific pipeline for methylomic and epigenomic analysis (MEA)." BMC Genomics201819:463 (https://doi.org/10.1186/s12864-018-4835-2)
 
 
 
