@@ -130,7 +130,13 @@ function bedmap_coverage {
 
 # preserve original user-input interval file
 DATE=$(date '+%y-%m-%d')
-cp "$PARAM_INTERVALS" "$PARAM_INTERVALS"_"$DATE"
+if [[ ! -e "$PARAM_INTERVALS"_"$DATE" ]]; then
+    # do not create a new file if one already exists
+    cp "$PARAM_INTERVALS" "$PARAM_INTERVALS"_"$DATE"
+fi
+
+
+
 
 #ChIP
 if [ $MEA_USE_BWA = 1 ] || [ $MEA_USE_BOWTIE2 = 1 ]; then
