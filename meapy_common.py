@@ -10,7 +10,6 @@ from typing import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parent
-LEGACY_SCRIPTS = REPO_ROOT / "src" / "scripts"
 
 
 class MeapyError(RuntimeError):
@@ -24,18 +23,6 @@ def require_path(path_text: str, kind: str = "file") -> Path:
     if kind == "dir" and not path.is_dir():
         raise MeapyError(f"Required directory does not exist: {path}")
     return path
-
-
-def build_legacy_command(command: str, args: Iterable[str]) -> list[str]:
-    legacy_entry = LEGACY_SCRIPTS / "mea"
-    if not legacy_entry.is_file():
-        raise MeapyError(f"Legacy entrypoint missing: {legacy_entry}")
-    return [str(legacy_entry), command, *args]
-
-
-def run_legacy(command: str, args: Iterable[str]) -> None:
-    cmd = build_legacy_command(command, args)
-    run_command(cmd)
 
 
 def run_command(cmd: Iterable[str]) -> None:
