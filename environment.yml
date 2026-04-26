@@ -1,0 +1,18 @@
+name: meapy
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pysam
+  - samtools
+  - bcftools
+  - htslib
+  - tabix
+  - bedtools
+  - ucsc-bedgraphtobigwig
+  - bwa
+  - bowtie2
+  - tophat
+  - star=2.7.11b
+  - bismark
