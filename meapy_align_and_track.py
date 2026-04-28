@@ -306,24 +306,8 @@ def align_star_sorted_bam(
         reads2 is not None and str(reads2).endswith(".gz")
     )
     if reads_are_gz:
-        if reads2 is None:
-            command = (
-                f"STAR --runMode alignReads --genomeDir {shlex.quote(str(index_dir))} "
-                f"--outFileNamePrefix {shlex.quote(star_prefix)} "
-                f"--runThreadN {int(max(1, threads))} "
-                f"--readFilesIn <(gzip -dc {shlex.quote(str(reads1))})"
-            )
-        else:
-            command = (
-                f"STAR --runMode alignReads --genomeDir {shlex.quote(str(index_dir))} "
-                f"--outFileNamePrefix {shlex.quote(star_prefix)} "
-                f"--runThreadN {int(max(1, threads))} "
-                f"--readFilesIn <(gzip -dc {shlex.quote(str(reads1))}) "
-                f"<(gzip -dc {shlex.quote(str(reads2))})"
-            )
-        run_shell_pipeline(command)
-    else:
-        run_command(cmd)
+        cmd.extend(["--readFilesCommand", "gunzip", "-c"])
+    run_command(cmd)
     star_final = Path(f"{star_prefix}Log.final.out")
     if star_final.is_file():
         input_reads = None
