@@ -308,13 +308,17 @@ def align_star_sorted_bam(
         star_prefix,
         "--readFilesIn",
         str(reads1),
-        "--runThreadN",
-        str(max(1, threads)),
-        "--outSAMtype",
-        "SAM",
     ]
     if reads2 is not None:
         cmd.append(str(reads2))
+    cmd.extend(
+        [
+            "--runThreadN",
+            str(max(1, threads)),
+            "--outSAMtype",
+            "SAM",
+        ]
+    )
     reads_are_gz = str(reads1).endswith(".gz") or (
         reads2 is not None and str(reads2).endswith(".gz")
     )
