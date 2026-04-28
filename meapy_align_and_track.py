@@ -93,8 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--min-mapq",
         type=int,
-        default=1,
-        help="Minimum MAPQ for filtering BAM before track generation.",
+        default=None,
+        help=(
+            "Minimum MAPQ for filtering BAM before track generation. "
+            "If unset, defaults by aligner: STAR=255, Bowtie2=30, Bismark=1."
+        ),
     )
     parser.add_argument(
         "--filter-flag",
@@ -107,6 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Minimum depth used for WGBS methylation bedGraph output.",
+    )
+    parser.add_argument(
+        "--se-extension",
+        type=int,
+        default=300,
+        help="Single-end read extension length for ChIP-style genome coverage (legacy MEA behavior).",
     )
     parser.add_argument(
         "--threads",
@@ -263,13 +272,15 @@ def align_bowtie2_sorted_bam(
     ensure_bowtie2_index(fasta_path, index_prefix, threads=threads)
     if reads2 is None:
         command = (
-            f"bowtie2 -p {int(max(1, threads))} -x {shlex.quote(str(index_prefix))} "
+            f"bowtie2 -p {int(max(1, threads))} -k 2 --score-min L,0,-0.0 "
+            f"-x {shlex.quote(str(index_prefix))} "
             f"-U {shlex.quote(str(reads1))} | "
             f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     else:
         command = (
-            f"bowtie2 -p {int(max(1, threads))} -x {shlex.quote(str(index_prefix))} "
+            f"bowtie2 -p {int(max(1, threads))} -k 2 --score-min L,0,-0.0 "
+            f"-x {shlex.quote(str(index_prefix))} "
             f"-1 {shlex.quote(str(reads1))} -2 {shlex.quote(str(reads2))} | "
             f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
@@ -299,6 +310,8 @@ def align_star_sorted_bam(
         str(reads1),
         "--runThreadN",
         str(max(1, threads)),
+        "--outSAMtype",
+        "SAM",
     ]
     if reads2 is not None:
         cmd.append(str(reads2))
@@ -357,6 +370,14 @@ def align_tophat2_sorted_bam(
     cmd = [
         python2_bin,
         tophat_script,
+        "--read-mismatches",
+        "0",
+        "--read-gap-length",
+        "0",
+        "--read-edit-dist",
+        "0",
+        "--no-sort-bam",
+        "--no-convert-bam",
         "-o",
         str(tophat_out),
         "-p",
@@ -745,6 +766,41 @@ def project_bedgraph(input_bedgraph: Path, input_refmap: Path, output_bedgraph: 
     )
 
 
+def count_bam_alignments(input_bam: Path) -> int:
+    completed = subprocess.run(
+        ["samtools", "view", "-c", str(input_bam)],
+        cwd=str(Path(__file__).resolve().parent),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise MeapyError(f"Failed to count alignments in BAM: {input_bam}")
+    try:
+        return int(completed.stdout.strip() or "0")
+    except ValueError as exc:
+        raise MeapyError(f"Unexpected samtools count output for {input_bam}: {completed.stdout!r}") from exc
+
+
+def write_rpm_scaled_bedgraph(input_bedgraph: Path, output_bedgraph: Path, rpm_scale: float) -> None:
+    with input_bedgraph.open("r") as in_handle, output_bedgraph.open("w") as out_handle:
+        for raw_line in in_handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("track") or line.startswith("#"):
+                out_handle.write(raw_line if raw_line.endswith("\n") else raw_line + "\n")
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            try:
+                value = float(parts[3]) * rpm_scale
+            except ValueError:
+                continue
+            out_handle.write(f"{parts[0]}\t{parts[1]}\t{parts[2]}\t{value}\n")
+
+
 def make_tracks_from_bam(
     bam_prefix: str,
     strain_name: str,
@@ -753,6 +809,7 @@ def make_tracks_from_bam(
     min_mapq: int,
     filter_flag: int,
     split_reads: bool,
+    single_end_extension: Optional[int],
 ) -> Path:
     output_prefix = Path(output_dir).expanduser().resolve() / (
         f"{Path(bam_prefix).name}_{strain_name}"
@@ -787,6 +844,8 @@ def make_tracks_from_bam(
         "-g",
         str(Path(chrom_sizes).expanduser().resolve()),
     ]
+    if single_end_extension is not None and single_end_extension > 0:
+        genomecov_cmd.extend(["-fs", str(single_end_extension)])
     if split_reads:
         genomecov_cmd.insert(3, "-split")
     with bedgraph_path.open("w") as bedgraph_handle:
@@ -822,18 +881,49 @@ def generate_tracks_python(
     min_mapq: int,
     filter_flag: int,
     assay: str,
+    read_layout: str,
+    aligner: str,
+    se_extension: int,
 ) -> None:
     split_reads = assay == "rna"
+    single_end_extension: Optional[int] = None
+    if (
+        read_layout == "single"
+        and assay != "rna"
+        and aligner in {"bwa", "bowtie2"}
+    ):
+        single_end_extension = se_extension
     Path(tracks_output_dir).expanduser().resolve().mkdir(parents=True, exist_ok=True)
 
     bed1 = make_tracks_from_bam(
-        bam_prefix, strain1, chrom_sizes, tracks_output_dir, min_mapq, filter_flag, split_reads
+        bam_prefix,
+        strain1,
+        chrom_sizes,
+        tracks_output_dir,
+        min_mapq,
+        filter_flag,
+        split_reads,
+        single_end_extension,
     )
     bed2 = make_tracks_from_bam(
-        bam_prefix, strain2, chrom_sizes, tracks_output_dir, min_mapq, filter_flag, split_reads
+        bam_prefix,
+        strain2,
+        chrom_sizes,
+        tracks_output_dir,
+        min_mapq,
+        filter_flag,
+        split_reads,
+        single_end_extension,
     )
     total_bed = make_tracks_from_bam(
-        bam_prefix, "total", chrom_sizes, tracks_output_dir, min_mapq, filter_flag, split_reads
+        bam_prefix,
+        "total",
+        chrom_sizes,
+        tracks_output_dir,
+        min_mapq,
+        filter_flag,
+        split_reads,
+        single_end_extension,
     )
 
     projected1 = Path(tracks_output_dir).expanduser().resolve() / f"{Path(bam_prefix).name}_{strain1}_projected.bedGraph"
@@ -855,6 +945,52 @@ def generate_tracks_python(
             str(projected2),
             str(Path(chrom_sizes).expanduser().resolve()),
             str(projected2).replace(".bedGraph", ".bw"),
+        ]
+    )
+    output_root = Path(tracks_output_dir).expanduser().resolve()
+    total_filtered_bam = output_root / (
+        f"{Path(bam_prefix).name}_total_F{filter_flag}_q{min_mapq}.bam"
+    )
+    total_alignments = count_bam_alignments(total_filtered_bam)
+    rpm_scale = 0.0 if total_alignments <= 0 else 1_000_000.0 / float(total_alignments)
+    print(f"[meapy] RPM scaling factor from total filtered alignments: {rpm_scale}")
+
+    strain1_rpm_bed = output_root / f"{Path(bam_prefix).name}_{strain1}_RPM.bedGraph"
+    strain2_rpm_bed = output_root / f"{Path(bam_prefix).name}_{strain2}_RPM.bedGraph"
+    total_rpm_bed = output_root / (
+        f"{Path(bam_prefix).name}_total_F{filter_flag}_q{min_mapq}_RPM.bedGraph"
+    )
+    write_rpm_scaled_bedgraph(projected1, strain1_rpm_bed, rpm_scale)
+    write_rpm_scaled_bedgraph(projected2, strain2_rpm_bed, rpm_scale)
+    write_rpm_scaled_bedgraph(total_bed, total_rpm_bed, rpm_scale)
+    sort_bedgraph_file(strain1_rpm_bed)
+    sort_bedgraph_file(strain2_rpm_bed)
+    sort_bedgraph_file(total_rpm_bed)
+    ensure_nonempty_bedgraph(strain1_rpm_bed, chrom_sizes)
+    ensure_nonempty_bedgraph(strain2_rpm_bed, chrom_sizes)
+    ensure_nonempty_bedgraph(total_rpm_bed, chrom_sizes)
+    run_command(
+        [
+            "bedGraphToBigWig",
+            str(strain1_rpm_bed),
+            str(Path(chrom_sizes).expanduser().resolve()),
+            str(strain1_rpm_bed).replace(".bedGraph", ".bw"),
+        ]
+    )
+    run_command(
+        [
+            "bedGraphToBigWig",
+            str(strain2_rpm_bed),
+            str(Path(chrom_sizes).expanduser().resolve()),
+            str(strain2_rpm_bed).replace(".bedGraph", ".bw"),
+        ]
+    )
+    run_command(
+        [
+            "bedGraphToBigWig",
+            str(total_rpm_bed),
+            str(Path(chrom_sizes).expanduser().resolve()),
+            str(total_rpm_bed).replace(".bedGraph", ".bw"),
         ]
     )
     print(f"[meapy] created total track: {total_bed}")
@@ -952,13 +1088,13 @@ def generate_wgbs_tracks_python(
     run_name = Path(bam_prefix).name
 
     make_tracks_from_bam(
-        bam_prefix, strain1, chrom_sizes, tracks_output_dir, min_mapq, filter_flag, False
+        bam_prefix, strain1, chrom_sizes, tracks_output_dir, min_mapq, filter_flag, False, None
     )
     make_tracks_from_bam(
-        bam_prefix, strain2, chrom_sizes, tracks_output_dir, min_mapq, filter_flag, False
+        bam_prefix, strain2, chrom_sizes, tracks_output_dir, min_mapq, filter_flag, False, None
     )
     make_tracks_from_bam(
-        bam_prefix, "total", chrom_sizes, tracks_output_dir, min_mapq, filter_flag, False
+        bam_prefix, "total", chrom_sizes, tracks_output_dir, min_mapq, filter_flag, False, None
     )
 
     pre1 = Path(f"{bam_prefix}_{strain1}_preProject.CpG_report.txt").expanduser().resolve()
@@ -1054,6 +1190,21 @@ def main() -> int:
                 selected_aligner = "minimap2" if args.long else "star"
             else:
                 selected_aligner = "bowtie2"
+
+        if args.min_mapq is None:
+            default_min_mapq_by_aligner = {
+                "star": 255,
+                "bowtie2": 30,
+                "bismark": 1,
+                "bwa": 1,
+                "tophat2": 1,
+                "minimap2": 20 if args.long else 1,
+            }
+            effective_min_mapq = default_min_mapq_by_aligner.get(selected_aligner, 1)
+        else:
+            effective_min_mapq = args.min_mapq
+        if effective_min_mapq < 0:
+            raise MeapyError("--min-mapq must be >= 0.")
 
         if args.long:
             if args.assay != "rna":
@@ -1162,7 +1313,7 @@ def main() -> int:
                 refmap2=refmap2,
                 tracks_output_dir=tracks_output_dir,
                 chrom_sizes=chrom_sizes,
-                min_mapq=args.min_mapq,
+                min_mapq=effective_min_mapq,
                 filter_flag=args.filter_flag,
                 min_depth=args.min_depth,
             )
@@ -1175,9 +1326,12 @@ def main() -> int:
                 refmap2=refmap2,
                 tracks_output_dir=tracks_output_dir,
                 chrom_sizes=chrom_sizes,
-                min_mapq=args.min_mapq,
+                min_mapq=effective_min_mapq,
                 filter_flag=args.filter_flag,
                 assay=args.assay,
+                read_layout=args.read_layout,
+                aligner=selected_aligner,
+                se_extension=args.se_extension,
             )
     except MeapyError as exc:
         print(f"[meapy] error: {exc}")
