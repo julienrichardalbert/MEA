@@ -108,6 +108,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Minimum depth used for WGBS methylation bedGraph output.",
     )
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=4,
+        help="Thread count for aligners/indexers and samtools sort where supported.",
+    )
     return parser
 
 
@@ -184,15 +190,17 @@ def ensure_bwa_index(fasta_path: Path) -> None:
     run_command(["bwa", "index", str(fasta_path)])
 
 
-def ensure_bowtie2_index(fasta_path: Path, index_prefix: Path) -> None:
+def ensure_bowtie2_index(fasta_path: Path, index_prefix: Path, threads: int) -> None:
     if (Path(f"{index_prefix}.1.bt2").is_file()) or (Path(f"{index_prefix}.1.bt2l").is_file()):
         print(f"[meapy] using existing Bowtie2 index prefix {index_prefix}")
         return
     print(f"[meapy] Bowtie2 index missing; building beside FASTA with prefix {index_prefix}")
-    run_command(["bowtie2-build", str(fasta_path), str(index_prefix)])
+    run_command(
+        ["bowtie2-build", "--threads", str(max(1, threads)), str(fasta_path), str(index_prefix)]
+    )
 
 
-def ensure_star_index(fasta_path: Path, index_dir: Path) -> None:
+def ensure_star_index(fasta_path: Path, index_dir: Path, threads: int) -> None:
     required = [
         index_dir / "Genome",
         index_dir / "SA",
@@ -215,7 +223,7 @@ def ensure_star_index(fasta_path: Path, index_dir: Path) -> None:
             "--genomeFastaFiles",
             str(fasta_path),
             "--runThreadN",
-            "4",
+            str(max(1, threads)),
         ]
     )
 
@@ -225,18 +233,20 @@ def align_bwa_sorted_bam(
     reads1: Path,
     reads2: Optional[Path],
     output_bam: Path,
+    threads: int,
 ) -> None:
     ensure_bwa_index(fasta_path)
     if reads2 is None:
         command = (
-            f"bwa mem {shlex.quote(str(fasta_path))} {shlex.quote(str(reads1))} | "
-            f"samtools sort -o {shlex.quote(str(output_bam))}"
+            f"bwa mem -t {int(max(1, threads))} {shlex.quote(str(fasta_path))} "
+            f"{shlex.quote(str(reads1))} | "
+            f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     else:
         command = (
-            f"bwa mem {shlex.quote(str(fasta_path))} {shlex.quote(str(reads1))} "
+            f"bwa mem -t {int(max(1, threads))} {shlex.quote(str(fasta_path))} {shlex.quote(str(reads1))} "
             f"{shlex.quote(str(reads2))} | "
-            f"samtools sort -o {shlex.quote(str(output_bam))}"
+            f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     run_shell_pipeline(command)
     run_command(["samtools", "index", str(output_bam)])
@@ -247,19 +257,21 @@ def align_bowtie2_sorted_bam(
     reads1: Path,
     reads2: Optional[Path],
     output_bam: Path,
+    threads: int,
 ) -> None:
     index_prefix = fasta_path.parent / f"{fasta_path.stem}.bowtie2_index"
-    ensure_bowtie2_index(fasta_path, index_prefix)
+    ensure_bowtie2_index(fasta_path, index_prefix, threads=threads)
     if reads2 is None:
         command = (
-            f"bowtie2 -x {shlex.quote(str(index_prefix))} -U {shlex.quote(str(reads1))} | "
-            f"samtools sort -o {shlex.quote(str(output_bam))}"
+            f"bowtie2 -p {int(max(1, threads))} -x {shlex.quote(str(index_prefix))} "
+            f"-U {shlex.quote(str(reads1))} | "
+            f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     else:
         command = (
-            f"bowtie2 -x {shlex.quote(str(index_prefix))} "
+            f"bowtie2 -p {int(max(1, threads))} -x {shlex.quote(str(index_prefix))} "
             f"-1 {shlex.quote(str(reads1))} -2 {shlex.quote(str(reads2))} | "
-            f"samtools sort -o {shlex.quote(str(output_bam))}"
+            f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     run_shell_pipeline(command)
     run_command(["samtools", "index", str(output_bam)])
@@ -270,9 +282,10 @@ def align_star_sorted_bam(
     reads1: Path,
     reads2: Optional[Path],
     output_bam: Path,
+    threads: int,
 ) -> None:
     index_dir = fasta_path.parent / f"{fasta_path.stem}.star_index"
-    ensure_star_index(fasta_path, index_dir)
+    ensure_star_index(fasta_path, index_dir, threads=threads)
     star_prefix = str(output_bam.parent / f"{output_bam.stem}_star_")
     cmd = [
         "STAR",
@@ -284,6 +297,8 @@ def align_star_sorted_bam(
         star_prefix,
         "--readFilesIn",
         str(reads1),
+        "--runThreadN",
+        str(max(1, threads)),
     ]
     if reads2 is not None:
         cmd.append(str(reads2))
@@ -295,12 +310,14 @@ def align_star_sorted_bam(
             command = (
                 f"STAR --runMode alignReads --genomeDir {shlex.quote(str(index_dir))} "
                 f"--outFileNamePrefix {shlex.quote(star_prefix)} "
+                f"--runThreadN {int(max(1, threads))} "
                 f"--readFilesIn <(gzip -dc {shlex.quote(str(reads1))})"
             )
         else:
             command = (
                 f"STAR --runMode alignReads --genomeDir {shlex.quote(str(index_dir))} "
                 f"--outFileNamePrefix {shlex.quote(star_prefix)} "
+                f"--runThreadN {int(max(1, threads))} "
                 f"--readFilesIn <(gzip -dc {shlex.quote(str(reads1))}) "
                 f"<(gzip -dc {shlex.quote(str(reads2))})"
             )
@@ -330,7 +347,7 @@ def align_star_sorted_bam(
         raise MeapyError(f"STAR SAM output missing: {star_sam}")
     run_shell_pipeline(
         f"samtools view -bShu {shlex.quote(str(star_sam))} | "
-        f"samtools sort -o {shlex.quote(str(output_bam))}"
+        f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
     )
     run_command(["samtools", "index", str(output_bam)])
 
@@ -340,6 +357,7 @@ def align_tophat2_sorted_bam(
     reads1: Path,
     reads2: Optional[Path],
     output_bam: Path,
+    threads: int,
 ) -> None:
     python2_bin = shutil.which("python2")
     tophat_script = shutil.which("tophat")
@@ -349,7 +367,7 @@ def align_tophat2_sorted_bam(
             "in a compatible form."
         )
     index_prefix = fasta_path.parent / f"{fasta_path.stem}.bowtie2_index"
-    ensure_bowtie2_index(fasta_path, index_prefix)
+    ensure_bowtie2_index(fasta_path, index_prefix, threads=threads)
     tophat_out = output_bam.parent / f"{output_bam.stem}_tophat2"
     tophat_out.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -357,6 +375,8 @@ def align_tophat2_sorted_bam(
         tophat_script,
         "-o",
         str(tophat_out),
+        "-p",
+        str(max(1, threads)),
         str(index_prefix),
         str(reads1),
     ]
@@ -366,7 +386,9 @@ def align_tophat2_sorted_bam(
     accepted_hits = tophat_out / "accepted_hits.bam"
     if not accepted_hits.is_file():
         raise MeapyError(f"TopHat2 BAM output missing: {accepted_hits}")
-    run_command(["samtools", "sort", "-o", str(output_bam), str(accepted_hits)])
+    run_command(
+        ["samtools", "sort", "-@", str(max(1, threads)), "-o", str(output_bam), str(accepted_hits)]
+    )
     run_command(["samtools", "index", str(output_bam)])
 
 
@@ -376,13 +398,14 @@ def align_minimap2_rna_sorted_bam(
     reads2: Optional[Path],
     output_bam: Path,
     min_mapq: int,
+    threads: int,
 ) -> None:
     if reads2 is not None:
         raise MeapyError("Long-read RNA minimap2 mode only supports --read-layout single.")
     cmd = (
-        f"minimap2 -ax splice {shlex.quote(str(fasta_path))} {shlex.quote(str(reads1))} | "
+        f"minimap2 -t {int(max(1, threads))} -ax splice {shlex.quote(str(fasta_path))} {shlex.quote(str(reads1))} | "
         f"samtools view -h -F 0x900 -q {int(min_mapq)} - | "
-        f"samtools sort -o {shlex.quote(str(output_bam))}"
+        f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
     )
     run_shell_pipeline(cmd)
     run_command(["samtools", "index", str(output_bam)])
@@ -398,6 +421,7 @@ def run_python_alignment(
     bam_prefix: str,
     aligner: str,
     long_mode: bool = False,
+    threads: int = 4,
 ) -> None:
     concat_bam = Path(f"{bam_prefix}_{strain1_name}_{strain2_name}.bam").expanduser().resolve()
     bam1 = Path(f"{bam_prefix}_{strain1_name}.bam").expanduser().resolve()
@@ -409,21 +433,27 @@ def run_python_alignment(
         if aligner != "minimap2":
             raise MeapyError("Long-read mode currently supports aligner minimap2 only.")
         align_minimap2_rna_sorted_bam(
-            pseudogenome_fasta, reads1, reads2, concat_bam, min_mapq=20
+            pseudogenome_fasta, reads1, reads2, concat_bam, min_mapq=20, threads=threads
         )
-        align_minimap2_rna_sorted_bam(reference_fasta, reads1, reads2, bam_total, min_mapq=20)
+        align_minimap2_rna_sorted_bam(
+            reference_fasta, reads1, reads2, bam_total, min_mapq=20, threads=threads
+        )
     elif aligner == "bwa":
-        align_bwa_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam)
-        align_bwa_sorted_bam(reference_fasta, reads1, reads2, bam_total)
+        align_bwa_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam, threads=threads)
+        align_bwa_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
     elif aligner == "bowtie2":
-        align_bowtie2_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam)
-        align_bowtie2_sorted_bam(reference_fasta, reads1, reads2, bam_total)
+        align_bowtie2_sorted_bam(
+            pseudogenome_fasta, reads1, reads2, concat_bam, threads=threads
+        )
+        align_bowtie2_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
     elif aligner == "star":
-        align_star_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam)
-        align_star_sorted_bam(reference_fasta, reads1, reads2, bam_total)
+        align_star_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam, threads=threads)
+        align_star_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
     elif aligner == "tophat2":
-        align_tophat2_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam)
-        align_tophat2_sorted_bam(reference_fasta, reads1, reads2, bam_total)
+        align_tophat2_sorted_bam(
+            pseudogenome_fasta, reads1, reads2, concat_bam, threads=threads
+        )
+        align_tophat2_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
     else:
         raise MeapyError(f"Unsupported Python aligner: {aligner}")
 
@@ -529,6 +559,7 @@ def run_bismark_alignment(
     reads2: Optional[Path],
     output_bam: Path,
     output_name: str,
+    threads: int,
 ) -> None:
     output_dir = output_bam.parent
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -544,6 +575,8 @@ def run_bismark_alignment(
     cmd = [
         "bismark",
         "--bowtie2",
+        "--parallel",
+        str(max(1, threads)),
         "--basename",
         output_name,
         "-o",
@@ -560,18 +593,22 @@ def run_bismark_alignment(
     pe_sam_path = output_dir / f"{output_name}_pe.sam"
     sam_path = output_dir / f"{output_name}.sam"
     if pe_bam_path.is_file():
-        run_command(["samtools", "sort", "-o", str(output_bam), str(pe_bam_path)])
+        run_command(
+            ["samtools", "sort", "-@", str(max(1, threads)), "-o", str(output_bam), str(pe_bam_path)]
+        )
     elif bam_path.is_file():
-        run_command(["samtools", "sort", "-o", str(output_bam), str(bam_path)])
+        run_command(
+            ["samtools", "sort", "-@", str(max(1, threads)), "-o", str(output_bam), str(bam_path)]
+        )
     elif pe_sam_path.is_file():
         run_shell_pipeline(
             f"samtools view -bShu {shlex.quote(str(pe_sam_path))} | "
-            f"samtools sort -o {shlex.quote(str(output_bam))}"
+            f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     elif sam_path.is_file():
         run_shell_pipeline(
             f"samtools view -bShu {shlex.quote(str(sam_path))} | "
-            f"samtools sort -o {shlex.quote(str(output_bam))}"
+            f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     else:
         raise MeapyError(
@@ -587,19 +624,33 @@ def run_bismark_methyl_extractor(
     output_dir: Path,
     output_prefix: str,
     is_paired: bool,
+    threads: int,
 ) -> Path:
     extractor_input = input_bam
     if is_paired:
         # Bismark methylation extractor expects paired reads to be adjacent.
         # Ensure query-name sort even if upstream BAM is coordinate-sorted.
         extractor_input = input_bam.with_suffix(".qname.bam")
-        run_command(["samtools", "sort", "-n", "-o", str(extractor_input), str(input_bam)])
+        run_command(
+            [
+                "samtools",
+                "sort",
+                "-@",
+                str(max(1, threads)),
+                "-n",
+                "-o",
+                str(extractor_input),
+                str(input_bam),
+            ]
+        )
 
     cmd = [
         "bismark_methylation_extractor",
         "-p" if is_paired else "-s",
         "--comprehensive",
         "--cytosine_report",
+        "--multicore",
+        str(max(1, threads)),
         "-o",
         str(output_dir),
         "--genome_folder",
@@ -988,6 +1039,8 @@ def main() -> int:
     args = build_parser().parse_args()
     try:
         require_path(args.reads1, kind="file")
+        if args.threads < 1:
+            raise MeapyError("--threads must be >= 1.")
         require_path(args.genome_input, kind="file")
         bam_prefix_path = Path(args.bam_prefix).expanduser().resolve()
         tracks_output_dir = (
@@ -1053,6 +1106,7 @@ def main() -> int:
                 reads2=reads2,
                 output_bam=Path(f"{args.bam_prefix}_{args.strain1}_{args.strain2}.bam").expanduser().resolve(),
                 output_name=f"{run_name}_{args.strain1}_{args.strain2}",
+                threads=args.threads,
             )
             run_bismark_alignment(
                 genome_folder=ref_folder,
@@ -1060,6 +1114,7 @@ def main() -> int:
                 reads2=reads2,
                 output_bam=Path(f"{args.bam_prefix}_total.bam").expanduser().resolve(),
                 output_name=f"{run_name}_total",
+                threads=args.threads,
             )
             combined_bam = Path(f"{args.bam_prefix}_{args.strain1}_{args.strain2}.bam").expanduser().resolve()
             split_allelic_bams_from_concat(
@@ -1078,6 +1133,7 @@ def main() -> int:
                 output_dir=out_dir,
                 output_prefix=f"{run_name}_{args.strain1}_{args.strain2}",
                 is_paired=reads2 is not None,
+                threads=args.threads,
             )
             split_cpg_by_strain(
                 combined_cpg_report=combined_cpg,
@@ -1093,6 +1149,7 @@ def main() -> int:
                 output_dir=out_dir,
                 output_prefix=f"{run_name}_total",
                 is_paired=reads2 is not None,
+                threads=args.threads,
             )
         else:
             run_python_alignment(
@@ -1105,6 +1162,7 @@ def main() -> int:
                 bam_prefix=args.bam_prefix,
                 aligner=selected_aligner,
                 long_mode=args.long,
+                threads=args.threads,
             )
 
         chrom_sizes = ensure_chrom_sizes(
