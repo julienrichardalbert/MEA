@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from meapy_common import MeapyError, require_path, run_command
-import pysam
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,9 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--aligner",
-        choices=["auto", "bwa", "bowtie2", "star", "tophat2", "bismark"],
+        choices=["auto", "bwa", "bowtie2", "star", "tophat2", "bismark", "minimap2"],
         default="auto",
         help="Aligner for native alignment path (default auto by assay).",
+    )
+    parser.add_argument(
+        "--long",
+        action="store_true",
+        help=(
+            "Enable long-read mode for alignment. For --assay rna this selects "
+            "a minimap2 + samtools primary/high-confidence filtering path."
+        ),
     )
     parser.add_argument(
         "--reference-genome",
@@ -363,6 +370,24 @@ def align_tophat2_sorted_bam(
     run_command(["samtools", "index", str(output_bam)])
 
 
+def align_minimap2_rna_sorted_bam(
+    fasta_path: Path,
+    reads1: Path,
+    reads2: Optional[Path],
+    output_bam: Path,
+    min_mapq: int,
+) -> None:
+    if reads2 is not None:
+        raise MeapyError("Long-read RNA minimap2 mode only supports --read-layout single.")
+    cmd = (
+        f"minimap2 -ax splice {shlex.quote(str(fasta_path))} {shlex.quote(str(reads1))} | "
+        f"samtools view -h -F 0x900 -q {int(min_mapq)} - | "
+        f"samtools sort -o {shlex.quote(str(output_bam))}"
+    )
+    run_shell_pipeline(cmd)
+    run_command(["samtools", "index", str(output_bam)])
+
+
 def run_python_alignment(
     reads1: Path,
     reads2: Optional[Path],
@@ -372,6 +397,7 @@ def run_python_alignment(
     reference_fasta: Path,
     bam_prefix: str,
     aligner: str,
+    long_mode: bool = False,
 ) -> None:
     concat_bam = Path(f"{bam_prefix}_{strain1_name}_{strain2_name}.bam").expanduser().resolve()
     bam1 = Path(f"{bam_prefix}_{strain1_name}.bam").expanduser().resolve()
@@ -379,7 +405,14 @@ def run_python_alignment(
     bam_total = Path(f"{bam_prefix}_total.bam").expanduser().resolve()
     bam1.parent.mkdir(parents=True, exist_ok=True)
 
-    if aligner == "bwa":
+    if long_mode:
+        if aligner != "minimap2":
+            raise MeapyError("Long-read mode currently supports aligner minimap2 only.")
+        align_minimap2_rna_sorted_bam(
+            pseudogenome_fasta, reads1, reads2, concat_bam, min_mapq=20
+        )
+        align_minimap2_rna_sorted_bam(reference_fasta, reads1, reads2, bam_total, min_mapq=20)
+    elif aligner == "bwa":
         align_bwa_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam)
         align_bwa_sorted_bam(reference_fasta, reads1, reads2, bam_total)
     elif aligner == "bowtie2":
@@ -396,7 +429,9 @@ def run_python_alignment(
 
     split_exact_mapq: Optional[int] = None
     split_min_mapq = 0
-    if aligner in {"bowtie2", "star"}:
+    if long_mode and aligner == "minimap2":
+        split_min_mapq = 20
+    elif aligner in {"bowtie2", "star"}:
         split_exact_mapq = 255
     elif aligner in {"bwa", "tophat2"}:
         split_min_mapq = 1
@@ -423,6 +458,14 @@ def split_allelic_bams_from_concat(
     min_mapq: int = 0,
     exact_mapq: Optional[int] = None,
 ) -> None:
+    try:
+        import pysam
+    except ModuleNotFoundError as exc:
+        raise MeapyError(
+            "Missing required Python package `pysam` for align/split workflow. "
+            "Install it in your active environment (for example: conda install -n meapy -c conda-forge pysam)."
+        ) from exc
+
     reference_fai = Path(f"{reference_fasta}.fai")
     if not reference_fai.is_file():
         run_command(["samtools", "faidx", str(reference_fasta)])
@@ -971,9 +1014,17 @@ def main() -> int:
             if args.assay == "wgbs":
                 selected_aligner = "bismark"
             elif args.assay == "rna":
-                selected_aligner = "star"
+                selected_aligner = "minimap2" if args.long else "star"
             else:
                 selected_aligner = "bowtie2"
+
+        if args.long:
+            if args.assay != "rna":
+                raise MeapyError("Long-read mode (--long) is currently supported only with --assay rna.")
+            if args.read_layout != "single":
+                raise MeapyError("Long-read RNA mode currently requires --read-layout single.")
+            if selected_aligner != "minimap2":
+                raise MeapyError("Long-read RNA mode requires aligner minimap2.")
 
         reference_genome_arg = args.reference_genome
         if args.quick_start and not reference_genome_arg:
@@ -1053,6 +1104,7 @@ def main() -> int:
                 reference_fasta=reference_fasta,
                 bam_prefix=args.bam_prefix,
                 aligner=selected_aligner,
+                long_mode=args.long,
             )
 
         chrom_sizes = ensure_chrom_sizes(

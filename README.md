@@ -53,6 +53,7 @@ Current dependency status:
 - `create-genome` is native Python and does not use `mea.config` (requires `bcftools` and `samtools`)
 - `align` supports Python alignment for ChIP/RNA (`bwa`) and WGBS (`bismark`)
 - aligner defaults by assay: ChIP `bowtie2`, RNA `STAR`, WGBS `bismark`; `bwa` remains an optional override and RNA can also use `tophat2`
+- long-read RNA mode is available via `--long` and uses `minimap2` with primary (`-F 0x900`) and MAPQ (`-q 20`) filtering before allele splitting
 
 ### TopHat2 legacy environment (optional)
 
@@ -94,6 +95,7 @@ Examples:
 - `python3 meapy.py create-genome --reference-fasta <ref.fa> --phased-vcf <phased.vcf.gz> --strain1 hap1 --strain2 hap2 --output-dir <dir>`
 - `python3 meapy.py align --read-layout single --reads1 <reads.fastq.gz> --genome-input <genome.fa> --reference-genome <ref.fa> --strain1 hap1 --strain2 hap2 --bam-prefix <out/prefix> --assay chip --aligner bowtie2 --chrom-sizes <build.chrom.sizes>`
 - `python3 meapy.py align --read-layout paired --reads1 <R1.fastq.gz> --reads2 <R2.fastq.gz> --genome-input <genome.fa> --reference-genome <ref.fa> --strain1 hap1 --strain2 hap2 --bam-prefix <out/prefix> --assay wgbs --aligner bismark --chrom-sizes <build.chrom.sizes>`
+- `python3 meapy.py align --read-layout single --reads1 <long_reads.fastq.gz> --genome-input <genome.fa> --reference-genome <ref.fa> --strain1 hap1 --strain2 hap2 --bam-prefix <out/prefix> --assay rna --long`
 - `python3 meapy.py align --quick-start --reference-fasta <ref.fa> --read-layout single --reads1 <reads.fastq.gz> --genome-input <create_genome_dir/hap1_hap2.fasta> --strain1 hap1 --strain2 hap2 --bam-prefix <out/prefix> --assay chip`
 - `python3 meapy.py project --input <track.bedGraph> --input-format bedgraph --input-refmap <strain.fasta.refmap> --output-bedgraph <projected.bedGraph>`
 - `python3 meapy.py doctor --assay all`

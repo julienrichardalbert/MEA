@@ -28,7 +28,7 @@ def main() -> int:
 
     common_tools = ["samtools", "bedtools", "bedGraphToBigWig", "bcftools", "bgzip", "tabix"]
     chip_tools = ["bowtie2", "bowtie2-build", "bwa"]
-    rna_tools = ["STAR", "bwa"]
+    rna_tools = ["STAR", "minimap2"]
     wgbs_tools = ["bismark", "bismark_methylation_extractor", "bwa"]
 
     if args.assay == "chip":
