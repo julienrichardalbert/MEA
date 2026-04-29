@@ -586,14 +586,14 @@ def run_bismark_alignment(
     cmd = [
         "bismark",
         "--bowtie2",
-        "--parallel",
-        str(max(1, threads)),
-        "--basename",
-        output_name,
         "-o",
         str(output_dir),
         str(genome_folder),
     ]
+    if max(1, threads) > 1:
+        cmd.extend(["--parallel", str(max(1, threads))])
+    else:
+        cmd.extend(["--basename", output_name])
     if reads2 is None:
         cmd.append(str(reads1))
     else:
@@ -622,10 +622,50 @@ def run_bismark_alignment(
             f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     else:
-        raise MeapyError(
-            f"Bismark alignment output not found for {output_name} "
-            f"(checked: {pe_bam_path.name}, {bam_path.name}, {pe_sam_path.name}, {sam_path.name})"
-        )
+        # Parallel runs can force default Bismark file naming.
+        fallback_pe_bam = sorted(output_dir.glob("*_pe.bam"), key=lambda p: p.stat().st_mtime, reverse=True)
+        fallback_bam = sorted(output_dir.glob("*.bam"), key=lambda p: p.stat().st_mtime, reverse=True)
+        fallback_pe_sam = sorted(output_dir.glob("*_pe.sam"), key=lambda p: p.stat().st_mtime, reverse=True)
+        fallback_sam = sorted(output_dir.glob("*.sam"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if fallback_pe_bam:
+            run_command(
+                [
+                    "samtools",
+                    "sort",
+                    "-@",
+                    str(max(1, threads)),
+                    "-o",
+                    str(output_bam),
+                    str(fallback_pe_bam[0]),
+                ]
+            )
+        elif fallback_bam:
+            run_command(
+                [
+                    "samtools",
+                    "sort",
+                    "-@",
+                    str(max(1, threads)),
+                    "-o",
+                    str(output_bam),
+                    str(fallback_bam[0]),
+                ]
+            )
+        elif fallback_pe_sam:
+            run_shell_pipeline(
+                f"samtools view -bShu {shlex.quote(str(fallback_pe_sam[0]))} | "
+                f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
+            )
+        elif fallback_sam:
+            run_shell_pipeline(
+                f"samtools view -bShu {shlex.quote(str(fallback_sam[0]))} | "
+                f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
+            )
+        else:
+            raise MeapyError(
+                f"Bismark alignment output not found for {output_name} "
+                f"(checked: {pe_bam_path.name}, {bam_path.name}, {pe_sam_path.name}, {sam_path.name})"
+            )
     run_command(["samtools", "index", str(output_bam)])
 
 
