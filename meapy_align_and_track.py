@@ -190,6 +190,18 @@ def run_shell_pipeline(command: str) -> None:
         raise MeapyError(f"Pipeline command failed: {command}")
 
 
+def run_command_in_dir(cmd: List[str], working_dir: Path) -> None:
+    if not cmd:
+        raise MeapyError("Empty command provided.")
+    completed = subprocess.run(
+        cmd,
+        cwd=str(working_dir),
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise MeapyError(f"Command failed with code {completed.returncode}: {cmd[0]}")
+
+
 def ensure_bwa_index(fasta_path: Path) -> None:
     bwt_path = Path(f"{fasta_path}.bwt")
     if bwt_path.is_file():
@@ -586,6 +598,8 @@ def run_bismark_alignment(
     cmd = [
         "bismark",
         "--bowtie2",
+        "--temp_dir",
+        str(output_dir),
         "-o",
         str(output_dir),
         str(genome_folder),
@@ -598,7 +612,8 @@ def run_bismark_alignment(
         cmd.append(str(reads1))
     else:
         cmd.extend(["-1", str(reads1), "-2", str(reads2)])
-    run_command(cmd)
+    # Run from output directory so Bismark temp/intermediate files are created there.
+    run_command_in_dir(cmd, output_dir)
     pe_bam_path = output_dir / f"{output_name}_pe.bam"
     bam_path = output_dir / f"{output_name}.bam"
     pe_sam_path = output_dir / f"{output_name}_pe.sam"
@@ -708,7 +723,8 @@ def run_bismark_methyl_extractor(
         str(genome_folder),
     ]
     cmd.append(str(extractor_input))
-    run_command(cmd)
+    # Run from output directory so Bismark temp/intermediate files are created there.
+    run_command_in_dir(cmd, output_dir)
     expected_candidates = [
         output_dir / f"{extractor_input.stem}.CpG_report.txt",
         output_dir / f"{input_bam.stem}.CpG_report.txt",
