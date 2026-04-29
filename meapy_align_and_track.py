@@ -431,6 +431,7 @@ def run_python_alignment(
     aligner: str,
     long_mode: bool = False,
     threads: int = 4,
+    split_min_mapq: int = 0,
 ) -> None:
     concat_bam = Path(f"{bam_prefix}_{strain1_name}_{strain2_name}.bam").expanduser().resolve()
     bam1 = Path(f"{bam_prefix}_{strain1_name}.bam").expanduser().resolve()
@@ -466,15 +467,6 @@ def run_python_alignment(
     else:
         raise MeapyError(f"Unsupported Python aligner: {aligner}")
 
-    split_exact_mapq: Optional[int] = None
-    split_min_mapq = 0
-    if long_mode and aligner == "minimap2":
-        split_min_mapq = 20
-    elif aligner in {"bowtie2", "star"}:
-        split_exact_mapq = 255
-    elif aligner in {"bwa", "tophat2"}:
-        split_min_mapq = 1
-
     split_allelic_bams_from_concat(
         concat_bam=concat_bam,
         strain1=strain1_name,
@@ -483,7 +475,7 @@ def run_python_alignment(
         output_bam1=bam1,
         output_bam2=bam2,
         min_mapq=split_min_mapq,
-        exact_mapq=split_exact_mapq,
+        exact_mapq=None,
     )
 
 
@@ -1263,7 +1255,7 @@ def main() -> int:
                 reference_fasta=reference_fasta,
                 output_bam1=Path(f"{args.bam_prefix}_{args.strain1}.bam").expanduser().resolve(),
                 output_bam2=Path(f"{args.bam_prefix}_{args.strain2}.bam").expanduser().resolve(),
-                min_mapq=0,
+                min_mapq=effective_min_mapq,
                 exact_mapq=None,
             )
             combined_cpg = run_bismark_methyl_extractor(
@@ -1302,6 +1294,7 @@ def main() -> int:
                 aligner=selected_aligner,
                 long_mode=args.long,
                 threads=args.threads,
+                split_min_mapq=effective_min_mapq,
             )
 
         chrom_sizes = ensure_chrom_sizes(
