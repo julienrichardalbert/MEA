@@ -272,14 +272,14 @@ def align_bowtie2_sorted_bam(
     ensure_bowtie2_index(fasta_path, index_prefix, threads=threads)
     if reads2 is None:
         command = (
-            f"bowtie2 -p {int(max(1, threads))} -k 2 --score-min L,0,-0.0 "
+            f"bowtie2 -p {int(max(1, threads))} "
             f"-x {shlex.quote(str(index_prefix))} "
             f"-U {shlex.quote(str(reads1))} | "
             f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
         )
     else:
         command = (
-            f"bowtie2 -p {int(max(1, threads))} -k 2 --score-min L,0,-0.0 "
+            f"bowtie2 -p {int(max(1, threads))} "
             f"-x {shlex.quote(str(index_prefix))} "
             f"-1 {shlex.quote(str(reads1))} -2 {shlex.quote(str(reads2))} | "
             f"samtools sort -@ {int(max(1, threads))} -o {shlex.quote(str(output_bam))}"
@@ -453,9 +453,19 @@ def run_python_alignment(
         align_bwa_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
     elif aligner == "bowtie2":
         align_bowtie2_sorted_bam(
-            pseudogenome_fasta, reads1, reads2, concat_bam, threads=threads
+            pseudogenome_fasta,
+            reads1,
+            reads2,
+            concat_bam,
+            threads=threads,
         )
-        align_bowtie2_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
+        align_bowtie2_sorted_bam(
+            reference_fasta,
+            reads1,
+            reads2,
+            bam_total,
+            threads=threads,
+        )
     elif aligner == "star":
         align_star_sorted_bam(pseudogenome_fasta, reads1, reads2, concat_bam, threads=threads)
         align_star_sorted_bam(reference_fasta, reads1, reads2, bam_total, threads=threads)
@@ -1190,7 +1200,7 @@ def main() -> int:
         if args.min_mapq is None:
             default_min_mapq_by_aligner = {
                 "star": 255,
-                "bowtie2": 30,
+                "bowtie2": 10,
                 "bismark": 1,
                 "bwa": 1,
                 "tophat2": 1,
