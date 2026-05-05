@@ -190,12 +190,17 @@ def run_shell_pipeline(command: str) -> None:
         raise MeapyError(f"Pipeline command failed: {command}")
 
 
-def run_command_in_dir(cmd: List[str], working_dir: Path) -> None:
+def run_command_in_dir(cmd: List[str], working_dir: Path, env_overrides: Optional[dict[str, str]] = None) -> None:
     if not cmd:
         raise MeapyError("Empty command provided.")
+    env = None
+    if env_overrides:
+        env = dict(**subprocess.os.environ)
+        env.update(env_overrides)
     completed = subprocess.run(
         cmd,
         cwd=str(working_dir),
+        env=env,
         check=False,
     )
     if completed.returncode != 0:
@@ -534,46 +539,104 @@ def split_allelic_bams_from_concat(
 
     out_header = {"HD": {"VN": "1.6"}, "SQ": [{"SN": c, "LN": l} for c, l in ref_lengths]}
 
-    def extract_one(strain: str, output_bam: Path) -> None:
-        unsorted_bam = output_bam.with_suffix(".unsorted.bam")
-        strain_prefix = f"{strain}_"
-        with pysam.AlignmentFile(str(concat_bam), "rb") as in_bam, pysam.AlignmentFile(
-            str(unsorted_bam), "wb", header=out_header
-        ) as out_bam:
-            for read in in_bam.fetch(until_eof=True):
-                if read.is_unmapped:
-                    continue
-                if exact_mapq is not None:
-                    if read.mapping_quality != exact_mapq:
-                        continue
-                elif read.mapping_quality < min_mapq:
-                    continue
-                ref_name = in_bam.get_reference_name(read.reference_id)
-                if ref_name is None or not ref_name.startswith(strain_prefix):
-                    continue
+    name_sorted_bam = concat_bam.with_suffix(".qname.tmp.bam")
+    run_command(["samtools", "sort", "-n", "-o", str(name_sorted_bam), str(concat_bam)])
 
-                target_ref = ref_name[len(strain_prefix) :]
-                target_tid = out_bam.get_tid(target_ref)
-                if target_tid < 0:
+    unsorted_bam1 = output_bam1.with_suffix(".unsorted.bam")
+    unsorted_bam2 = output_bam2.with_suffix(".unsorted.bam")
+    prefixes = {strain1: f"{strain1}_", strain2: f"{strain2}_"}
+
+    def read_passes(read: "pysam.AlignedSegment") -> bool:
+        if read.is_unmapped:
+            return False
+        if read.is_secondary or read.is_supplementary:
+            return False
+        if exact_mapq is not None:
+            return read.mapping_quality == exact_mapq
+        return read.mapping_quality >= min_mapq
+
+    def remap_read_to_reference(
+        read: "pysam.AlignedSegment",
+        source_bam: "pysam.AlignmentFile",
+        out_bam: "pysam.AlignmentFile",
+        strain: str,
+    ) -> Optional["pysam.AlignedSegment"]:
+        prefix = prefixes[strain]
+        ref_name = source_bam.get_reference_name(read.reference_id)
+        if ref_name is None or not ref_name.startswith(prefix):
+            return None
+        target_ref = ref_name[len(prefix) :]
+        target_tid = out_bam.get_tid(target_ref)
+        if target_tid < 0:
+            return None
+        read.reference_id = target_tid
+        if read.next_reference_id >= 0:
+            next_ref_name = source_bam.get_reference_name(read.next_reference_id)
+            if next_ref_name and next_ref_name.startswith(prefix):
+                target_next = next_ref_name[len(prefix) :]
+                next_tid = out_bam.get_tid(target_next)
+                read.next_reference_id = next_tid if next_tid >= 0 else -1
+            else:
+                read.next_reference_id = -1
+        return read
+
+    with pysam.AlignmentFile(str(name_sorted_bam), "rb") as in_bam, pysam.AlignmentFile(
+        str(unsorted_bam1), "wb", header=out_header
+    ) as out1, pysam.AlignmentFile(str(unsorted_bam2), "wb", header=out_header) as out2:
+        current_qname: Optional[str] = None
+        current_group: List["pysam.AlignedSegment"] = []
+
+        def flush_group(group: List["pysam.AlignedSegment"]) -> None:
+            if not group:
+                return
+            kept: List[tuple[str, "pysam.AlignedSegment"]] = []
+            strains_seen = set()
+            for rec in group:
+                if not read_passes(rec):
                     continue
-                read.reference_id = target_tid
+                ref_name = in_bam.get_reference_name(rec.reference_id)
+                if ref_name is None:
+                    continue
+                if ref_name.startswith(prefixes[strain1]):
+                    strains_seen.add(strain1)
+                    kept.append((strain1, rec))
+                elif ref_name.startswith(prefixes[strain2]):
+                    strains_seen.add(strain2)
+                    kept.append((strain2, rec))
+            # Critical: drop ambiguous reads that map to both haplotypes.
+            if len(strains_seen) != 1:
+                return
+            chosen = next(iter(strains_seen))
+            for strain_name, rec in kept:
+                if strain_name != chosen:
+                    continue
+                if chosen == strain1:
+                    remapped = remap_read_to_reference(rec, in_bam, out1, strain1)
+                    if remapped is not None:
+                        out1.write(remapped)
+                else:
+                    remapped = remap_read_to_reference(rec, in_bam, out2, strain2)
+                    if remapped is not None:
+                        out2.write(remapped)
 
-                if read.next_reference_id >= 0:
-                    next_ref_name = in_bam.get_reference_name(read.next_reference_id)
-                    if next_ref_name and next_ref_name.startswith(strain_prefix):
-                        target_next = next_ref_name[len(strain_prefix) :]
-                        next_tid = out_bam.get_tid(target_next)
-                        read.next_reference_id = next_tid if next_tid >= 0 else -1
-                    else:
-                        read.next_reference_id = -1
-                out_bam.write(read)
+        for read in in_bam.fetch(until_eof=True):
+            qname = read.query_name
+            if current_qname is None:
+                current_qname = qname
+            if qname != current_qname:
+                flush_group(current_group)
+                current_group = []
+                current_qname = qname
+            current_group.append(read)
+        flush_group(current_group)
 
-        run_command(["samtools", "sort", "-o", str(output_bam), str(unsorted_bam)])
-        run_command(["samtools", "index", str(output_bam)])
-        unsorted_bam.unlink(missing_ok=True)
-
-    extract_one(strain1, output_bam1)
-    extract_one(strain2, output_bam2)
+    run_command(["samtools", "sort", "-o", str(output_bam1), str(unsorted_bam1)])
+    run_command(["samtools", "index", str(output_bam1)])
+    run_command(["samtools", "sort", "-o", str(output_bam2), str(unsorted_bam2)])
+    run_command(["samtools", "index", str(output_bam2)])
+    unsorted_bam1.unlink(missing_ok=True)
+    unsorted_bam2.unlink(missing_ok=True)
+    name_sorted_bam.unlink(missing_ok=True)
 
 
 def run_bismark_alignment(
@@ -595,25 +658,38 @@ def run_bismark_alignment(
             f"{genome_folder} (expected directory {bismark_index_dir}). "
             f"Build it with: bismark_genome_preparation --bowtie2 {genome_folder}"
         )
+    bowtie2_bin = shutil.which("bowtie2")
+    samtools_bin = shutil.which("samtools")
+    if not bowtie2_bin or not samtools_bin:
+        raise MeapyError("Bismark mode requires bowtie2 and samtools on PATH.")
+    bowtie2_dir = str(Path(bowtie2_bin).parent)
+    samtools_dir = str(Path(samtools_bin).parent)
+
     cmd = [
         "bismark",
         "--bowtie2",
+        "--sam",
+        "-p",
+        str(max(1, threads)),
+        "--path_to_bowtie",
+        bowtie2_dir,
+        "--samtools_path",
+        samtools_dir,
         "--temp_dir",
         str(output_dir),
+        "--basename",
+        output_name,
         "-o",
         str(output_dir),
         str(genome_folder),
     ]
-    if max(1, threads) > 1:
-        cmd.extend(["--parallel", str(max(1, threads))])
-    else:
-        cmd.extend(["--basename", output_name])
     if reads2 is None:
         cmd.append(str(reads1))
     else:
         cmd.extend(["-1", str(reads1), "-2", str(reads2)])
     # Run from output directory so Bismark temp/intermediate files are created there.
-    run_command_in_dir(cmd, output_dir)
+    bismark_env = {"TMPDIR": str(output_dir), "TMP": str(output_dir), "TEMP": str(output_dir)}
+    run_command_in_dir(cmd, output_dir, env_overrides=bismark_env)
     pe_bam_path = output_dir / f"{output_name}_pe.bam"
     bam_path = output_dir / f"{output_name}.bam"
     pe_sam_path = output_dir / f"{output_name}_pe.sam"
@@ -710,13 +786,18 @@ def run_bismark_methyl_extractor(
             ]
         )
 
+    samtools_bin = shutil.which("samtools")
+    if not samtools_bin:
+        raise MeapyError("Bismark methylation extractor requires samtools on PATH.")
+    samtools_dir = str(Path(samtools_bin).parent)
+
     cmd = [
         "bismark_methylation_extractor",
         "-p" if is_paired else "-s",
         "--comprehensive",
         "--cytosine_report",
-        "--multicore",
-        str(max(1, threads)),
+        "--samtools_path",
+        samtools_dir,
         "-o",
         str(output_dir),
         "--genome_folder",
@@ -724,7 +805,8 @@ def run_bismark_methyl_extractor(
     ]
     cmd.append(str(extractor_input))
     # Run from output directory so Bismark temp/intermediate files are created there.
-    run_command_in_dir(cmd, output_dir)
+    bismark_env = {"TMPDIR": str(output_dir), "TMP": str(output_dir), "TEMP": str(output_dir)}
+    run_command_in_dir(cmd, output_dir, env_overrides=bismark_env)
     expected_candidates = [
         output_dir / f"{extractor_input.stem}.CpG_report.txt",
         output_dir / f"{input_bam.stem}.CpG_report.txt",
