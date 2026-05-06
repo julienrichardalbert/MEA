@@ -830,6 +830,28 @@ def run_bismark_methyl_extractor(
     return renamed
 
 
+def filter_bam_for_wgbs_methyl_extraction(
+    input_bam: Path,
+    output_bam: Path,
+    filter_flag: int,
+    min_mapq: int,
+) -> None:
+    run_command(
+        [
+            "samtools",
+            "view",
+            "-Sbh",
+            "-F",
+            str(filter_flag),
+            "-q",
+            str(min_mapq),
+            str(input_bam),
+            "-o",
+            str(output_bam),
+        ]
+    )
+
+
 def split_cpg_by_strain(
     combined_cpg_report: Path,
     strain1: str,
@@ -1406,8 +1428,17 @@ def main() -> int:
                 min_mapq=effective_min_mapq,
                 exact_mapq=None,
             )
-            combined_cpg = run_bismark_methyl_extractor(
+            combined_filtered_bam = Path(
+                f"{args.bam_prefix}_{args.strain1}_{args.strain2}_F{args.filter_flag}_q{effective_min_mapq}.bam"
+            ).expanduser().resolve()
+            filter_bam_for_wgbs_methyl_extraction(
                 input_bam=combined_bam,
+                output_bam=combined_filtered_bam,
+                filter_flag=args.filter_flag,
+                min_mapq=effective_min_mapq,
+            )
+            combined_cpg = run_bismark_methyl_extractor(
+                input_bam=combined_filtered_bam,
                 genome_folder=concat_folder,
                 output_dir=out_dir,
                 output_prefix=f"{run_name}_{args.strain1}_{args.strain2}",
@@ -1422,8 +1453,17 @@ def main() -> int:
                 output2=out_dir / f"{run_name}_{args.strain2}_preProject.CpG_report.txt",
             )
             total_bam = Path(f"{args.bam_prefix}_total.bam").expanduser().resolve()
-            run_bismark_methyl_extractor(
+            total_filtered_bam = Path(
+                f"{args.bam_prefix}_total_F{args.filter_flag}_q{effective_min_mapq}.bam"
+            ).expanduser().resolve()
+            filter_bam_for_wgbs_methyl_extraction(
                 input_bam=total_bam,
+                output_bam=total_filtered_bam,
+                filter_flag=args.filter_flag,
+                min_mapq=effective_min_mapq,
+            )
+            run_bismark_methyl_extractor(
+                input_bam=total_filtered_bam,
                 genome_folder=ref_folder,
                 output_dir=out_dir,
                 output_prefix=f"{run_name}_total",
